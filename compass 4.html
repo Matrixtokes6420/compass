@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Failsafe Compass</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #readout { font-size: 3rem; font-weight: bold; }
+        
+        .compass-container {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            border: 5px solid #333;
+            border-radius: 50%;
+            margin: 20px;
+        }
+
+        .needle {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid #ff3b30;
+            z-index: 10;
+        }
+
+        #dial {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: #222;
+            position: relative;
+            transition: transform 0.1s linear;
+        }
+
+        .label {
+            position: absolute;
+            font-weight: bold;
+            font-size: 1.5rem;
+            transform: translate(-50%, -50%);
+        }
+        .n { top: 15%; left: 50%; color: red; }
+        .e { top: 50%; left: 85%; }
+        .s { top: 85%; left: 50%; }
+        .w { top: 50%; left: 15%; }
+
+        #btn {
+            padding: 20px 40px;
+            background: #007aff;
+            color: white;
+            border-radius: 30px;
+            border: none;
+            font-size: 1.2rem;
+        }
+
+        #status-log {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #666;
+            max-width: 80%;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="readout">0°</div>
+    
+    <div class="compass-container">
+        <div class="needle"></div>
+        <div id="dial">
+            <div class="label n">N</div>
+            <div class="label e">E</div>
+            <div class="label s">S</div>
+            <div class="label w">W</div>
+        </div>
+    </div>
+
+    <button id="btn">START SENSOR</button>
+    <div id="status-log">Status: Waiting for click...</div>
+
+<<script>
+    const dial = document.getElementById('dial');
+    const readout = document.getElementById('readout');
+    const btn = document.getElementById('btn');
+    const log = document.getElementById('status-log');
+
+    // HTTPS Check
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        log.innerHTML = "⚠️ <b>WARNING:</b> Compass requires HTTPS.<br>It will not work via file:// or http://";
+        log.style.color = "orange";
+    }
+
+    function update(deg) {
+        // Visual update
+        dial.style.transform = `rotate(${-deg}deg)`;
+        readout.innerText = Math.round(deg) + '°';
+    }
+
+    function handleOrientation(event) {
+        let heading = null;
+
+        // iOS Device
+        if (event.webkitCompassHeading) {
+            heading = event.webkitCompassHeading;
+        } 
+        // Android Device (Absolute Orientation)
+        else if (event.absolute === true && event.alpha !== null) {
+            // Android alpha increases counter-clockwise.
+            // 360 - alpha converts it to clock-wise (0=N, 90=E)
+            heading = 360 - event.alpha;
+        }
+
+        // Only update if we have a valid heading
+        if (heading !== null) {
+            // Normalize to 0-360 range
+            if (heading < 0) heading += 360;
+            if (heading >= 360) heading -= 360;
+            
+            log.innerText = `Status: Active | Heading: ${Math.round(heading)}°`;
+            update(heading);
+        }
+    }
+
+    btn.addEventListener('click', async () => {
+        log.innerText = "Status: Requesting permission...";
+        
+        // iOS 13+ Handling
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                const permission = await DeviceOrientationEvent.requestPermission();
+                if (permission === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation, true);
+                    btn.style.display = 'none';
+                } else {
+                    log.innerText = "Status: Permission Denied";
+                }
+            } catch (error) {
+                log.innerText = "Status: Error - " + error.message;
+            }
+        } 
+        // Android / Non-iOS Handling
+        else {
+            log.innerText = "Status: Detecting sensors...";
+            btn.style.display = 'none';
+
+            // Check if "Absolute" orientation is supported (Chrome Android)
+            if ('ondeviceorientationabsolute' in window) {
+                window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            } else {
+                // Fallback (May not point North correctly without 'absolute')
+                window.addEventListener('deviceorientation', handleOrientation, true);
+            }
+        }
+    });
+</script>
+</body>
+</html>
